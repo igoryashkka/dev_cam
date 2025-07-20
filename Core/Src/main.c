@@ -333,7 +333,7 @@ static void MX_SDMMC1_SD_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN SDMMC1_Init 2 */
- // hsd1.Init.ClockDiv = 199;
+  
   /* USER CODE END SDMMC1_Init 2 */
 
 }
@@ -463,11 +463,10 @@ bool checkAndInitSD(FATFS *fs, char *SDPath, const Diskio_drvTypeDef *SD_Driver)
 
     if (f_getfree(SDPath, &free_clusters, &fs) != FR_OK)
     {
-        /* Unmount drive */
         f_mount(NULL, (TCHAR const*) SDPath, 1);
         FATFS_UnLinkDriver((TCHAR*) SDPath);
         FATFS_LinkDriver(SD_Driver, (TCHAR*) SDPath);
-        /* Mount drive */
+
         if (FR_OK != f_mount(fs, (TCHAR const*) SDPath, 1))
         {
             retVal = false;
@@ -484,42 +483,24 @@ void SD_PhotoViewer_Save(void)
 
 
     FIL file;
-   // FILINFO fno;
-    //uint16_t index = 0;
+
 
     char filename[30] = { 0x0U };
     if (f_mount(&SDFatFS, SDPath, 1) != FR_OK)
             {
-                // Mount failed — card not present, or bad FS
+               
                 while(1);
             }
-
-
-    /* Do image transfering from Display, converting to JPG and storing on SD Card */
     do
     {
-        //if (!checkAndInitSD(&SDFatFS, SDPath, &SD_Driver))
-       // {
-            // Error
-         //   break;
-       // }
-
-        /* Generate unique file name */
-       // do
-      // {
             sprintf(filename, "%s_%d.%s", IMG_PREFIX, 9, IMG_EXTENSION);
-            //index++;
-      //  }
-      //  while (f_stat(filename, &fno) == FR_OK); // FR_OK returns if file exists
+   
 
-        /* Create a new file with the unique name */
         if (FR_OK != f_open(&file, filename, FA_CREATE_ALWAYS | FA_WRITE))
         {
-            // Error
             break;
         }
 
-        /* Do LIBJPEG configuration */
         struct jpeg_compress_struct cinfo;
         struct jpeg_error_mgr jerr;
         JSAMPROW row_pointer = SD_RGB888_buffer;
@@ -528,12 +509,12 @@ void SD_PhotoViewer_Save(void)
         jpeg_create_compress(&cinfo);
         jpeg_stdio_dest(&cinfo, &file);
 
-        /* image width and height, in pixels */
+
         cinfo.image_width = ILI9341_ACTIVE_WIDTH;
         cinfo.image_height = ILI9341_ACTIVE_HEIGHT;
-        /* # of color components per pixel */
+
         cinfo.input_components = 3;
-        /* colorspace of input image */
+
         cinfo.in_color_space = JCS_RGB;
 
         jpeg_set_defaults(&cinfo);
@@ -543,13 +524,11 @@ void SD_PhotoViewer_Save(void)
         while (cinfo.next_scanline < cinfo.image_height)
         {
             uint16_t y = cinfo.next_scanline;
-
-            // Generate a color line: R, G, B changes with Y
             for (uint16_t x = 0; x < ILI9341_ACTIVE_WIDTH; x++)
             {
                 uint8_t* pixel = &SD_RGB888_buffer[x * 3];
 
-                // Create a line that changes color over Y
+
                 pixel[0] = (uint8_t)((y * 255) / ILI9341_ACTIVE_HEIGHT);        // R
                 pixel[1] = (uint8_t)((x * 255) / ILI9341_ACTIVE_WIDTH);         // G
                 pixel[2] = (uint8_t)(((x + y) * 255) / (ILI9341_ACTIVE_WIDTH + ILI9341_ACTIVE_HEIGHT)); // B
@@ -558,11 +537,9 @@ void SD_PhotoViewer_Save(void)
             (void) jpeg_write_scanlines(&cinfo, &row_pointer, 1U);
         }
 
-        /* Finalize compression */
+
         jpeg_finish_compress(&cinfo);
-        /* Close the file */
         f_close(&file);
-        /* Stop LIBJPEG */
         jpeg_destroy_compress(&cinfo);
     }
     while (FALSE);
