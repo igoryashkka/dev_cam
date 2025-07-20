@@ -25,6 +25,7 @@
 /* USER CODE BEGIN Includes */
 #include <stdbool.h>
 #include <stdio.h>
+#include "OV7670.h"
 
 #define IMG_PREFIX                                                        "img"
 #define IMG_EXTENSION                                                     "jpg"
@@ -92,6 +93,7 @@ static void MX_TIM5_Init(void);
 /* USER CODE BEGIN 0 */
 static uint8_t SD_RGB888_buffer[RGB888_SIZE_BYTES * ILI9341_ACTIVE_WIDTH];
 
+void _DrawCrop(const uint8_t *buffer, uint32_t nbytes, uint16_t x1, uint16_t x2, uint16_t y1, uint16_t y2);
 
 void SD_PhotoViewer_Init(void);
 
@@ -142,8 +144,12 @@ int main(void)
   MX_TIM5_Init();
   /* USER CODE BEGIN 2 */
   SD_PhotoViewer_Init();
-  HAL_Delay(1000U);
+  HAL_Delay(300U);
   SD_PhotoViewer_Save();
+  HAL_Delay(300U);
+  OV7670_Init(&hdcmi, &hi2c1, &htim5, TIM_CHANNEL_3);
+  OV7670_RegisterCallback(OV7670_DRAWLINE_CBK,(OV7670_FncPtr_t) _DrawCrop);
+  HAL_Delay(300U);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -433,6 +439,16 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+
+
+void _DrawCrop(const uint8_t *buffer, uint32_t nbytes, uint16_t x1, uint16_t x2, uint16_t y1, uint16_t y2)
+{
+
+
+
+
+}
+
 void SD_PhotoViewer_Init(void)
 {
     (void)checkAndInitSD(&SDFatFS, SDPath, &SD_Driver);
@@ -468,8 +484,8 @@ void SD_PhotoViewer_Save(void)
 
 
     FIL file;
-    FILINFO fno;
-    uint16_t index = 0;
+   // FILINFO fno;
+    //uint16_t index = 0;
 
     char filename[30] = { 0x0U };
     if (f_mount(&SDFatFS, SDPath, 1) != FR_OK)
