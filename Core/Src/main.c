@@ -25,6 +25,8 @@
 /* USER CODE BEGIN Includes */
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
+
 #include "OV7670.h"
 
 #define IMG_PREFIX                                                        "img"
@@ -100,7 +102,6 @@ static void MX_TIM5_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-static uint8_t SD_RGB565_buffer[RGB565_SIZE_BYTES * ILI9341_ACTIVE_WIDTH];
 void _DrawCrop(const uint8_t *buffer, uint32_t nbytes, uint16_t x1, uint16_t x2, uint16_t y1, uint16_t y2);
 
 void SD_PhotoViewer_Init(void);
@@ -153,10 +154,11 @@ int main(void)
   /* USER CODE BEGIN 2 */
   SD_PhotoViewer_Init();
   HAL_Delay(300U);
-  SD_PhotoViewer_Save();
-  HAL_Delay(300U);
+
   OV7670_Init(&hdcmi, &hi2c1, &htim5, TIM_CHANNEL_3);
   OV7670_RegisterCallback(OV7670_DRAWLINE_CBK,(OV7670_FncPtr_t) _DrawCrop);
+  HAL_Delay(300U);
+  SD_PhotoViewer_Save();
   HAL_Delay(300U);
   /* USER CODE END 2 */
 
@@ -529,7 +531,7 @@ void SD_PhotoViewer_Save(void)
 
     for (uint16_t y = 0; y < FRAMEBUF_LINES; y++)
     {
-        const uint8_t *row_rgb565 = &frame_buffer[y * FRAMEBUF_WIDTH * 2];
+        const uint8_t *row_rgb565 = &sd_frame_buffer[y * FRAMEBUF_WIDTH * 2];
 
         for (uint16_t x = 0; x < FRAMEBUF_WIDTH; x++)
         {
