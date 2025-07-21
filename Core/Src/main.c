@@ -43,6 +43,14 @@
 #define MAX_IMAGE_NAME_LENGTH                                             (32U)
 #define MAX_IMAGE_COUNT                                                  (400U)
 
+#define FRAMEBUF_LINES     (ILI9341_ACTIVE_HEIGHT)
+#define FRAMEBUF_WIDTH     (ILI9341_ACTIVE_WIDTH)
+#define FRAMEBUF_SIZE      (FRAMEBUF_WIDTH * FRAMEBUF_LINES * 2U)  // RGB565 = 2 bytes
+
+static uint8_t sd_frame_buffer[FRAMEBUF_SIZE];  // Global buffer for one full frame
+
+static volatile uint8_t frame_ready = 0;
+
 
 /* USER CODE END Includes */
 
@@ -91,8 +99,8 @@ static void MX_TIM5_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-static uint8_t SD_RGB888_buffer[RGB888_SIZE_BYTES * ILI9341_ACTIVE_WIDTH];
 
+static uint8_t SD_RGB565_buffer[RGB565_SIZE_BYTES * ILI9341_ACTIVE_WIDTH];
 void _DrawCrop(const uint8_t *buffer, uint32_t nbytes, uint16_t x1, uint16_t x2, uint16_t y1, uint16_t y2);
 
 void SD_PhotoViewer_Init(void);
@@ -440,13 +448,22 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 
 
-
-void _DrawCrop(const uint8_t *buffer, uint32_t nbytes, uint16_t x1, uint16_t x2, uint16_t y1, uint16_t y2)
+void _DrawCrop(const uint8_t *buffer, uint32_t nbytes,
+               uint16_t x1, uint16_t x2, uint16_t y1, uint16_t y2)
 {
 
+    uint32_t line_width = (x2 - x1 + 1U);
+    uint32_t lines = (y2 - y1 + 1U);
 
+    for (uint32_t i = 0; i < lines; i++) {
+        uint8_t *dst = &sd_frame_buffer[2 * (y1 + i) * FRAMEBUF_WIDTH];
+        const uint8_t *src = &buffer[i * line_width * 2];
+        memcpy(dst, src, line_width * 2);
+    }
 
-
+    if (y2 == (FRAMEBUF_LINES - 1U)) {
+        frame_ready = 1;
+    }
 }
 
 void SD_PhotoViewer_Init(void)
@@ -477,24 +494,80 @@ bool checkAndInitSD(FATFS *fs, char *SDPath, const Diskio_drvTypeDef *SD_Driver)
 }
 
 
-
 void SD_PhotoViewer_Save(void)
 {
-
+    if (!frame_ready) return;  // Ensure full frame is captured
 
     FIL file;
+    char filename[30] = {0};
 
-
-    char filename[30] = { 0x0U };
     if (f_mount(&SDFatFS, SDPath, 1) != FR_OK)
-            {
-               
-                while(1);
-            }
+        return;
+
+    sprintf(filename, "%s_%d.%s", IMG_PREFIX, 9, IMG_EXTENSION);
+
+    if (f_open(&file, filename, FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
+        return;
+
+    struct jpeg_compress_struct cinfo;
+    struct jpeg_error_mgr jerr;
+    JSAMPROW row_pointer;
+    uint8_t row_rgb888_buffer[3 * FRAMEBUF_WIDTH];
+
+    cinfo.err = jpeg_std_error(&jerr);
+    jpeg_create_compress(&cinfo);
+    jpeg_stdio_dest(&cinfo, &file);
+
+    cinfo.image_width = FRAMEBUF_WIDTH;
+    cinfo.image_height = FRAMEBUF_LINES;
+    cinfo.input_components = 3;
+    cinfo.in_color_space = JCS_RGB;
+
+    jpeg_set_defaults(&cinfo);
+    jpeg_set_quality(&cinfo, 90, TRUE);
+    jpeg_start_compress(&cinfo, TRUE);
+
+    for (uint16_t y = 0; y < FRAMEBUF_LINES; y++)
+    {
+        const uint8_t *row_rgb565 = &frame_buffer[y * FRAMEBUF_WIDTH * 2];
+
+        for (uint16_t x = 0; x < FRAMEBUF_WIDTH; x++)
+        {
+            uint16_t rgb565 = (row_rgb565[2 * x] << 8) | row_rgb565[2 * x + 1];
+
+            uint8_t r5 = (rgb565 >> 11) & 0x1F;
+            uint8_t g6 = (rgb565 >> 5) & 0x3F;
+            uint8_t b5 = rgb565 & 0x1F;
+
+            row_rgb888_buffer[3 * x + 0] = (r5 << 3) | (r5 >> 2);
+            row_rgb888_buffer[3 * x + 1] = (g6 << 2) | (g6 >> 4);
+            row_rgb888_buffer[3 * x + 2] = (b5 << 3) | (b5 >> 2);
+        }
+
+        row_pointer = row_rgb888_buffer;
+        jpeg_write_scanlines(&cinfo, &row_pointer, 1);
+    }
+
+    jpeg_finish_compress(&cinfo);
+    jpeg_destroy_compress(&cinfo);
+    f_close(&file);
+
+    frame_ready = 0; // Reset flag
+}
+/*
+void SD_PhotoViewer_Save(void)
+{
+    FIL file;
+    char filename[30] = { 0x0U };
+
+    if (f_mount(&SDFatFS, SDPath, 1) != FR_OK)
+    {
+        while(1); // Error handling
+    }
+
     do
     {
-            sprintf(filename, "%s_%d.%s", IMG_PREFIX, 9, IMG_EXTENSION);
-   
+        sprintf(filename, "%s_%d.%s", IMG_PREFIX, 9, IMG_EXTENSION);
 
         if (FR_OK != f_open(&file, filename, FA_CREATE_ALWAYS | FA_WRITE))
         {
@@ -503,18 +576,16 @@ void SD_PhotoViewer_Save(void)
 
         struct jpeg_compress_struct cinfo;
         struct jpeg_error_mgr jerr;
-        JSAMPROW row_pointer = SD_RGB888_buffer;
-        cinfo.err = jpeg_std_error(&jerr);
+        JSAMPROW row_pointer;
+        uint8_t row_rgb888_buffer[3 * ILI9341_ACTIVE_WIDTH];  // Temporary RGB888 row buffer
 
+        cinfo.err = jpeg_std_error(&jerr);
         jpeg_create_compress(&cinfo);
         jpeg_stdio_dest(&cinfo, &file);
 
-
         cinfo.image_width = ILI9341_ACTIVE_WIDTH;
         cinfo.image_height = ILI9341_ACTIVE_HEIGHT;
-
         cinfo.input_components = 3;
-
         cinfo.in_color_space = JCS_RGB;
 
         jpeg_set_defaults(&cinfo);
@@ -524,26 +595,44 @@ void SD_PhotoViewer_Save(void)
         while (cinfo.next_scanline < cinfo.image_height)
         {
             uint16_t y = cinfo.next_scanline;
+
+            // Fill the SD_RGB565_buffer with sample gradient (optional: replace with real data capture)
             for (uint16_t x = 0; x < ILI9341_ACTIVE_WIDTH; x++)
             {
-                uint8_t* pixel = &SD_RGB888_buffer[x * 3];
+                uint8_t r = (uint8_t)((y * 255) / ILI9341_ACTIVE_HEIGHT);
+                uint8_t g = (uint8_t)((x * 255) / ILI9341_ACTIVE_WIDTH);
+                uint8_t b = (uint8_t)(((x + y) * 255) / (ILI9341_ACTIVE_WIDTH + ILI9341_ACTIVE_HEIGHT));
 
-
-                pixel[0] = (uint8_t)((y * 255) / ILI9341_ACTIVE_HEIGHT);        // R
-                pixel[1] = (uint8_t)((x * 255) / ILI9341_ACTIVE_WIDTH);         // G
-                pixel[2] = (uint8_t)(((x + y) * 255) / (ILI9341_ACTIVE_WIDTH + ILI9341_ACTIVE_HEIGHT)); // B
+                uint16_t rgb565 = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
+                SD_RGB565_buffer[x * 2 + 0] = (rgb565 >> 8) & 0xFF;
+                SD_RGB565_buffer[x * 2 + 1] = rgb565 & 0xFF;
             }
 
-            (void) jpeg_write_scanlines(&cinfo, &row_pointer, 1U);
-        }
+            // Convert RGB565 to RGB888 for JPEG encoder
+            for (uint16_t x = 0; x < ILI9341_ACTIVE_WIDTH; x++)
+            {
+                uint16_t rgb565 = (SD_RGB565_buffer[2 * x] << 8) | SD_RGB565_buffer[2 * x + 1];
 
+                uint8_t r5 = (rgb565 >> 11) & 0x1F;
+                uint8_t g6 = (rgb565 >> 5) & 0x3F;
+                uint8_t b5 = rgb565 & 0x1F;
+
+                row_rgb888_buffer[3 * x + 0] = (r5 << 3) | (r5 >> 2); // Expand to 8-bit
+                row_rgb888_buffer[3 * x + 1] = (g6 << 2) | (g6 >> 4);
+                row_rgb888_buffer[3 * x + 2] = (b5 << 3) | (b5 >> 2);
+            }
+
+            row_pointer = row_rgb888_buffer;
+            jpeg_write_scanlines(&cinfo, &row_pointer, 1U);
+        }
 
         jpeg_finish_compress(&cinfo);
         f_close(&file);
         jpeg_destroy_compress(&cinfo);
     }
     while (FALSE);
-}
+}*/
+
 /* USER CODE END 4 */
 
  /* MPU Configuration */
