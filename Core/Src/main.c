@@ -32,10 +32,10 @@
 #define IMG_PREFIX                                                        "img"
 #define IMG_EXTENSION                                                     "jpg"
 
-#define ILI9341_WIDTH                       (240U)
-#define ILI9341_HEIGHT                      (320U)
-    #define  ILI9341_ACTIVE_WIDTH           ILI9341_HEIGHT
-    #define  ILI9341_ACTIVE_HEIGHT          ILI9341_WIDTH
+#define ILI9341_WIDTH                       (320U)
+#define ILI9341_HEIGHT                      (240U)
+    #define  ILI9341_ACTIVE_WIDTH           ILI9341_WIDTH
+    #define  ILI9341_ACTIVE_HEIGHT          ILI9341_HEIGHT
 
 
 #define RGB888_SIZE_BYTES                                                  (3U)
@@ -50,7 +50,7 @@
 #define FRAMEBUF_SIZE      (FRAMEBUF_WIDTH * FRAMEBUF_LINES * 2U)  // RGB565 = 2 bytes
 
 static uint8_t sd_frame_buffer[FRAMEBUF_SIZE];  // Global buffer for one full frame
-
+static uint8_t SD_RGB565_buffer[RGB565_SIZE_BYTES * ILI9341_ACTIVE_WIDTH];
 static volatile uint8_t frame_ready = 0;
 
 
@@ -156,10 +156,17 @@ int main(void)
   HAL_Delay(300U);
 
   OV7670_Init(&hdcmi, &hi2c1, &htim5, TIM_CHANNEL_3);
-  OV7670_RegisterCallback(OV7670_DRAWLINE_CBK,(OV7670_FncPtr_t) _DrawCrop);
-  HAL_Delay(300U);
-  SD_PhotoViewer_Save();
-  HAL_Delay(300U);
+  OV7670_RegisterCallback(OV7670_DRAWLINE_CBK, (OV7670_FncPtr_t)_DrawCrop);
+
+  OV7670_Start();
+  HAL_Delay(300);  // або краще чекати через флаг frame_ready
+  OV7670_Stop();
+
+  if (frame_ready)
+  {
+      SD_PhotoViewer_Save();
+      frame_ready = 0;
+  }
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -453,17 +460,19 @@ static void MX_GPIO_Init(void)
 void _DrawCrop(const uint8_t *buffer, uint32_t nbytes,
                uint16_t x1, uint16_t x2, uint16_t y1, uint16_t y2)
 {
-
     uint32_t line_width = (x2 - x1 + 1U);
     uint32_t lines = (y2 - y1 + 1U);
 
     for (uint32_t i = 0; i < lines; i++) {
         uint8_t *dst = &sd_frame_buffer[2 * (y1 + i) * FRAMEBUF_WIDTH];
         const uint8_t *src = &buffer[i * line_width * 2];
-        memcpy(dst, src, line_width * 2);
+
+        // Copy line, assuming full-width (x1 == 0, x2 == 319)
+        memcpy(dst + x1 * 2, src, line_width * 2);
     }
 
-    if (y2 == (FRAMEBUF_LINES - 1U)) {
+    // Signal when full frame is ready
+    if (y2 >= (FRAMEBUF_LINES - 1U)) {
         frame_ready = 1;
     }
 }
@@ -494,7 +503,7 @@ bool checkAndInitSD(FATFS *fs, char *SDPath, const Diskio_drvTypeDef *SD_Driver)
 
     return retVal;
 }
-
+/*
 
 void SD_PhotoViewer_Save(void)
 {
@@ -556,19 +565,19 @@ void SD_PhotoViewer_Save(void)
 
     frame_ready = 0; // Reset flag
 }
-/*
-void SD_PhotoViewer_Save(void)
+*/void SD_PhotoViewer_Save(void)
 {
     FIL file;
-    char filename[30] = { 0x0U };
+    char filename[32] = { 0 };
+    uint8_t row_rgb888_buffer[3 * ILI9341_ACTIVE_WIDTH];  // Temporary RGB888 buffer
 
     if (f_mount(&SDFatFS, SDPath, 1) != FR_OK)
     {
-        while(1); // Error handling
+        // mount error
+        return;
     }
 
-    do
-    {
+    do {
         sprintf(filename, "%s_%d.%s", IMG_PREFIX, 9, IMG_EXTENSION);
 
         if (FR_OK != f_open(&file, filename, FA_CREATE_ALWAYS | FA_WRITE))
@@ -579,7 +588,6 @@ void SD_PhotoViewer_Save(void)
         struct jpeg_compress_struct cinfo;
         struct jpeg_error_mgr jerr;
         JSAMPROW row_pointer;
-        uint8_t row_rgb888_buffer[3 * ILI9341_ACTIVE_WIDTH];  // Temporary RGB888 row buffer
 
         cinfo.err = jpeg_std_error(&jerr);
         jpeg_create_compress(&cinfo);
@@ -597,43 +605,33 @@ void SD_PhotoViewer_Save(void)
         while (cinfo.next_scanline < cinfo.image_height)
         {
             uint16_t y = cinfo.next_scanline;
+            const uint8_t* line_rgb565 = &sd_frame_buffer[y * FRAMEBUF_WIDTH * 2];
 
-            // Fill the SD_RGB565_buffer with sample gradient (optional: replace with real data capture)
-            for (uint16_t x = 0; x < ILI9341_ACTIVE_WIDTH; x++)
+            for (uint16_t x = 0; x < FRAMEBUF_WIDTH; x++)
             {
-                uint8_t r = (uint8_t)((y * 255) / ILI9341_ACTIVE_HEIGHT);
-                uint8_t g = (uint8_t)((x * 255) / ILI9341_ACTIVE_WIDTH);
-                uint8_t b = (uint8_t)(((x + y) * 255) / (ILI9341_ACTIVE_WIDTH + ILI9341_ACTIVE_HEIGHT));
-
-                uint16_t rgb565 = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
-                SD_RGB565_buffer[x * 2 + 0] = (rgb565 >> 8) & 0xFF;
-                SD_RGB565_buffer[x * 2 + 1] = rgb565 & 0xFF;
-            }
-
-            // Convert RGB565 to RGB888 for JPEG encoder
-            for (uint16_t x = 0; x < ILI9341_ACTIVE_WIDTH; x++)
-            {
-                uint16_t rgb565 = (SD_RGB565_buffer[2 * x] << 8) | SD_RGB565_buffer[2 * x + 1];
+                // Little Endian: LSB first (typical for OV7670)
+            	uint16_t rgb565 = (line_rgb565[2 * x] << 8) | line_rgb565[2 * x + 1];
+              // uint16_t rgb565 = (line_rgb565[2 * x + 1] << 8) | line_rgb565[2 * x];
 
                 uint8_t r5 = (rgb565 >> 11) & 0x1F;
                 uint8_t g6 = (rgb565 >> 5) & 0x3F;
                 uint8_t b5 = rgb565 & 0x1F;
 
-                row_rgb888_buffer[3 * x + 0] = (r5 << 3) | (r5 >> 2); // Expand to 8-bit
-                row_rgb888_buffer[3 * x + 1] = (g6 << 2) | (g6 >> 4);
-                row_rgb888_buffer[3 * x + 2] = (b5 << 3) | (b5 >> 2);
+                row_rgb888_buffer[3 * x + 0] = (r5 << 3) | (r5 >> 2);  // R
+                row_rgb888_buffer[3 * x + 1] = (g6 << 2) | (g6 >> 4);  // G
+                row_rgb888_buffer[3 * x + 2] = (b5 << 3) | (b5 >> 2);  // B
             }
 
             row_pointer = row_rgb888_buffer;
-            jpeg_write_scanlines(&cinfo, &row_pointer, 1U);
+            jpeg_write_scanlines(&cinfo, &row_pointer, 1);
         }
 
         jpeg_finish_compress(&cinfo);
-        f_close(&file);
         jpeg_destroy_compress(&cinfo);
-    }
-    while (FALSE);
-}*/
+        f_close(&file);
+
+    } while (0);
+}
 
 /* USER CODE END 4 */
 

@@ -235,11 +235,14 @@ const uint8_t OV7670_reg[][2] =
   /* Color mode and resolution settings */
   {OV7670_REG_COM7,             0x14},         // QVGA, RGB
 //{OV7670_REG_COM7,             0xCU},         // QCIF (176*144), RGB
+  {OV7670_REG_COM8, 0xE7}, // Enable AGC + AWB + AEC + fast mode
   {OV7670_REG_RGB444,           0x00},         // RGB444 Disable
   {OV7670_REG_COM15,            0xD0},         // RGB565
-  {OV7670_REG_TSLB,             0xCU},         // UYVY
-  {OV7670_REG_COM13,            0x80},         // gamma enable, UV auto adjust, UYVY
+  {OV7670_REG_TSLB,             0x00},         // UYVY
+  {OV7670_REG_COM13,            0x00},         // gamma enable, UV auto adjust, UYVY
   {OV7670_REG_RSRVD,            0x84},         // Important!
+  {OV7670_REG_COM9, 0x3A}, // AGC Ceiling = x16 gain (0111010)
+  {OV7670_REG_COM16, 0x38},    // AWG gain enable
   /* Clock settings */
   {OV7670_REG_COM3,             0x04},         // DCW enable
   {OV7670_REG_COM14,            0x19},         // manual scaling, pclk/=2
@@ -316,6 +319,7 @@ const uint8_t OV7670_reg[][2] =
   {OV7670_REG_GAM15,            208},
   {OV7670_REG_SLOP,             64},
 #endif
+
   /* FPS */
 //{OV7670_REG_DBLV,             0x4a},         // PLL  x4
   {OV7670_REG_CLKRC,            0x00},         // Pre-scalar = 1/1
