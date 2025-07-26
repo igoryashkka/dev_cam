@@ -503,69 +503,8 @@ bool checkAndInitSD(FATFS *fs, char *SDPath, const Diskio_drvTypeDef *SD_Driver)
 
     return retVal;
 }
-/*
 
 void SD_PhotoViewer_Save(void)
-{
-    if (!frame_ready) return;  // Ensure full frame is captured
-
-    FIL file;
-    char filename[30] = {0};
-
-    if (f_mount(&SDFatFS, SDPath, 1) != FR_OK)
-        return;
-
-    sprintf(filename, "%s_%d.%s", IMG_PREFIX, 9, IMG_EXTENSION);
-
-    if (f_open(&file, filename, FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
-        return;
-
-    struct jpeg_compress_struct cinfo;
-    struct jpeg_error_mgr jerr;
-    JSAMPROW row_pointer;
-    uint8_t row_rgb888_buffer[3 * FRAMEBUF_WIDTH];
-
-    cinfo.err = jpeg_std_error(&jerr);
-    jpeg_create_compress(&cinfo);
-    jpeg_stdio_dest(&cinfo, &file);
-
-    cinfo.image_width = FRAMEBUF_WIDTH;
-    cinfo.image_height = FRAMEBUF_LINES;
-    cinfo.input_components = 3;
-    cinfo.in_color_space = JCS_RGB;
-
-    jpeg_set_defaults(&cinfo);
-    jpeg_set_quality(&cinfo, 90, TRUE);
-    jpeg_start_compress(&cinfo, TRUE);
-
-    for (uint16_t y = 0; y < FRAMEBUF_LINES; y++)
-    {
-        const uint8_t *row_rgb565 = &sd_frame_buffer[y * FRAMEBUF_WIDTH * 2];
-
-        for (uint16_t x = 0; x < FRAMEBUF_WIDTH; x++)
-        {
-            uint16_t rgb565 = (row_rgb565[2 * x] << 8) | row_rgb565[2 * x + 1];
-
-            uint8_t r5 = (rgb565 >> 11) & 0x1F;
-            uint8_t g6 = (rgb565 >> 5) & 0x3F;
-            uint8_t b5 = rgb565 & 0x1F;
-
-            row_rgb888_buffer[3 * x + 0] = (r5 << 3) | (r5 >> 2);
-            row_rgb888_buffer[3 * x + 1] = (g6 << 2) | (g6 >> 4);
-            row_rgb888_buffer[3 * x + 2] = (b5 << 3) | (b5 >> 2);
-        }
-
-        row_pointer = row_rgb888_buffer;
-        jpeg_write_scanlines(&cinfo, &row_pointer, 1);
-    }
-
-    jpeg_finish_compress(&cinfo);
-    jpeg_destroy_compress(&cinfo);
-    f_close(&file);
-
-    frame_ready = 0; // Reset flag
-}
-*/void SD_PhotoViewer_Save(void)
 {
     FIL file;
     char filename[32] = { 0 };
@@ -610,7 +549,8 @@ void SD_PhotoViewer_Save(void)
             for (uint16_t x = 0; x < FRAMEBUF_WIDTH; x++)
             {
                 // Little Endian: LSB first (typical for OV7670)
-            	uint16_t rgb565 = (line_rgb565[2 * x] << 8) | line_rgb565[2 * x + 1];
+          	uint16_t rgb565 = (line_rgb565[2 * x] << 8) | line_rgb565[2 * x + 1];
+            	//uint16_t rgb565 = (line_rgb565[2 * x + 1] << 8) | line_rgb565[2 * x];
               // uint16_t rgb565 = (line_rgb565[2 * x + 1] << 8) | line_rgb565[2 * x];
 
                 uint8_t r5 = (rgb565 >> 11) & 0x1F;
