@@ -275,12 +275,12 @@ const uint8_t OV7670_reg[][2] =
   {OV7670_REG_MTX6,             0x80},
   {OV7670_REG_MTXS,             0x9E},
 #endif
-//{OV7670_REG_COM8,             0x84},
-//{OV7670_REG_COM9,             0x0a},         // AGC Ceiling = 2x
-//{0x5FU,                       0x2f},         // AWB B Gain Range (empirically decided)
+{OV7670_REG_COM8,             0x84},
+{OV7670_REG_COM9,             0x0a},         // AGC Ceiling = 2x
+ {0x5FU,                       0x2f},         // AWB B Gain Range (empirically decided)
         // without this bright scene becomes yellow (purple). might be because of color matrix
-//{0x60U,                       0x98},         // AWB R Gain Range (empirically decided)
-//{0x61U,                       0x70},         // AWB G Gain Range (empirically decided)
+{0x60U,                       0x98},         // AWB R Gain Range (empirically decided)
+{0x61U,                       0x70},         // AWB G Gain Range (empirically decided)
   {OV7670_REG_COM16,            0x38},         // edge enhancement, de-noise, AWG gain enabled
   /* gamma curve */
 #if 1
@@ -319,7 +319,17 @@ const uint8_t OV7670_reg[][2] =
   {OV7670_REG_GAM15,            208},
   {OV7670_REG_SLOP,             64},
 #endif
-
+  {0x13, 0xE7},  // COM8: Enable AEC + AGC + AWB
+  {0x70, 0x7F},  // COM9: AGC gain ceiling = x64
+  {0x55, 0x70},  // BRIGHTNESS: high (0x70 = ~max before oversaturation)
+  {0x56, 0x60},  // CONTRAST: high
+  {0x4F, 0x90},  // Color Matrix tweak: boost red
+  {0x50, 0x90},
+  {0x51, 0x00},
+  {0x52, 0x28},
+  {0x53, 0x70},
+  {0x54, 0x90},
+  {0x58, 0x9E},  // Saturation
   /* FPS */
 //{OV7670_REG_DBLV,             0x4a},         // PLL  x4
   {OV7670_REG_CLKRC,            0x00},         // Pre-scalar = 1/1

@@ -109,7 +109,7 @@ void SD_PhotoViewer_Init(void);
 bool checkAndInitSD(FATFS *fs, char *SDPath, const Diskio_drvTypeDef *SD_Driver);
 void SD_PhotoViewer_Save(void);
 extern const Diskio_drvTypeDef  SD_Driver;
-
+void SD_Dump_RAW565(void);
 /* USER CODE END 0 */
 
 /**
@@ -164,6 +164,7 @@ int main(void)
 
   if (frame_ready)
   {
+	  SD_Dump_RAW565();
       SD_PhotoViewer_Save();
       frame_ready = 0;
   }
@@ -538,7 +539,7 @@ void SD_PhotoViewer_Save(void)
         cinfo.in_color_space = JCS_RGB;
 
         jpeg_set_defaults(&cinfo);
-        jpeg_set_quality(&cinfo, 90, TRUE);
+        jpeg_set_quality(&cinfo, 100, TRUE);
         jpeg_start_compress(&cinfo, TRUE);
 
         while (cinfo.next_scanline < cinfo.image_height)
@@ -571,6 +572,23 @@ void SD_PhotoViewer_Save(void)
         f_close(&file);
 
     } while (0);
+}
+
+void SD_Dump_RAW565(void)
+{
+    FIL file;
+    UINT bytes_written;
+
+    if (f_mount(&SDFatFS, SDPath, 1) != FR_OK) {
+        return;
+    }
+
+    if (f_open(&file, "frame.raw", FA_CREATE_ALWAYS | FA_WRITE) != FR_OK) {
+        return;
+    }
+
+    f_write(&file, sd_frame_buffer, FRAMEBUF_SIZE, &bytes_written);
+    f_close(&file);
 }
 
 /* USER CODE END 4 */
